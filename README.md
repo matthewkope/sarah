@@ -58,7 +58,7 @@ vercel deploy --prod --scope jmattkope-9478s-projects
 ```
 
 For automatic deploys on every push, connect the GitHub repo once in the Vercel dashboard
-(Project → Settings → Git → connect `matthewkope/sarah-matchmaking`).
+(Project → Settings → Git → connect `matthewkope/sarah`).
 
 ## Installing the terminal version (anyone)
 
@@ -73,7 +73,7 @@ curl -fsSL https://sarah-matchmaking.vercel.app/install | sh
 Prefer to read it first? Download straight from the repo instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/matthewkope/sarah-matchmaking/main/attachment-style-test \
+curl -fsSL https://raw.githubusercontent.com/matthewkope/sarah/main/attachment-style-test \
   -o ~/.local/bin/sarah && chmod +x ~/.local/bin/sarah
 ```
 

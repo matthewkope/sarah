@@ -4,7 +4,7 @@
 # it does NOT run the quiz. Read it before piping to sh if you like.
 set -e
 
-RAW="https://raw.githubusercontent.com/matthewkope/sarah-matchmaking/main/attachment-style-test"
+RAW="https://raw.githubusercontent.com/matthewkope/sarah/main/attachment-style-test"
 DEST="${HOME}/.local/bin/sarah"
 
 mkdir -p "$(dirname "$DEST")"
