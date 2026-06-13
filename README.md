@@ -103,11 +103,16 @@ the terminal's `profiles.json`. (`profiles.json` is personal data and is git-ign
 Both the website and the CLI can sign in to one account so your profiles sync across devices
 and between the two apps. It's backed by [Supabase](https://supabase.com) (Postgres + Auth):
 
-- **Website:** the account bar under the title → *Sign in / Sign up*. While signed in, every
-  save writes to your account and your profiles load on any device. Signed out, it stays local.
-- **CLI:** menu option **[C] cloud sync** → sign in. After that, saving a result **auto-pushes**
-  it to your account; **[U]** uploads all local profiles and **[D]** downloads cloud ones. The
-  CLI stores its login token in `~/.sarah/credentials.json` (chmod 600).
+- **Website:** the account bar under the title → *Sign in / Sign up*, via **Continue with
+  Google** or email + password. New email signups must **confirm their address** (click the
+  link Supabase emails) before signing in. While signed in, every save writes to your account
+  and your profiles load on any device; signed out, it stays local.
+- **CLI:** menu option **[C] cloud sync** → sign in with **email + password**. After that,
+  saving a result **auto-pushes** it to your account; **[U]** uploads all local profiles and
+  **[D]** downloads cloud ones. The login token is stored in `~/.sarah/credentials.json`
+  (chmod 600). *Note:* the CLI uses email/password, so a **Google-only account can't sign in
+  from the terminal** unless it also has a password — sign up with email/password (or add a
+  password to your account) to use the CLI.
 - **Privacy:** data is per-account and protected by Postgres **Row-Level Security** — you only
   ever see your own rows. The app uses the public **anon** key (safe to ship); the secret
   `service_role` key is never used by any client.
