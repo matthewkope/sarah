@@ -107,13 +107,16 @@ and between the two apps. It's backed by [Supabase](https://supabase.com) (Postg
   Google** or email + password. New email signups must **confirm their address** (click the
   link Supabase emails) before signing in. While signed in, every save writes to your account
   and your profiles load on any device; signed out, it stays local.
-- **CLI:** menu option **[C] cloud sync** → **[G] sign in with Google** (opens your browser via
-  a loopback flow, like `gh`/`vercel` — works for Google accounts too) or **[I] email +
-  password**. After signing in, saving a result **auto-pushes** it to your account; **[U]**
-  uploads all local profiles and **[D]** downloads cloud ones. The login token is stored in
-  `~/.sarah/credentials.json` (chmod 600).
-  - The browser flow redirects to `http://localhost:8910–8912`, so those must be in Supabase's
-    **Redirect URLs** allowlist (see setup below).
+- **CLI:** menu option **[C] cloud sync** → **[S] sign in** opens a **branded Sarah sign-in
+  page** ([`cli.html`](cli.html)) in your browser with both **Google and email** (the
+  `gh`/`vercel`/Toggl loopback pattern); after you sign in there, the page hands the session
+  back to the waiting terminal. **[I]** also offers email/password typed directly in the
+  terminal. After signing in, saving a result **auto-pushes** it; **[U]** uploads all local
+  profiles and **[D]** downloads cloud ones. The token is stored in `~/.sarah/credentials.json`
+  (chmod 600).
+  - The browser hands the session back to `http://localhost:8910–8912`. These are plain local
+    redirects (not Supabase OAuth redirects), so they don't need to be in the Supabase
+    allowlist; only `https://sarah-matchmaking.vercel.app/**` does (it hosts `cli.html`).
 - **Privacy:** data is per-account and protected by Postgres **Row-Level Security** — you only
   ever see your own rows. The app uses the public **anon** key (safe to ship); the secret
   `service_role` key is never used by any client.

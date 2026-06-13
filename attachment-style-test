@@ -844,6 +844,7 @@ def write_profiles(profiles):
 #  data private. No secret key is stored anywhere.)
 # ════════════════════════════════════════════════════════════════════════
 SUPABASE_URL = "https://pbevmvhslsdknbmaeenc.supabase.co"
+SITE_URL = "https://sarah-matchmaking.vercel.app"
 SUPABASE_ANON = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6"
                  "InBiZXZtdmhzbHNka25ibWFlZW5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNzU5NTgs"
                  "ImV4cCI6MjA5Njk1MTk1OH0.qIMIxSi0C2b74BezDhMttFluPpH6ZOjm1ul3mfEiSZU")
@@ -985,17 +986,17 @@ def _pkce_pair():
     return verifier, challenge
 
 
-def cloud_login_browser(provider="google"):
+def cloud_login_browser():
+    """Open the branded Sarah sign-in page in the browser (Google or email) and
+    catch the session it hands back to this local listener."""
     port = _free_port(OAUTH_PORTS)
     if port is None:
         return False, f"no free local port (tried {OAUTH_PORTS}); close other apps and retry"
-    verifier, challenge = _pkce_pair()
-    redirect = f"http://localhost:{port}"
     box = {}
 
     done_html = (b"<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;"
                  b"text-align:center;padding-top:48px;color:#2b2b33'>"
-                 b"<h2>Signed in to Sarah quizzes \xe2\x9c\x93</h2>"
+                 b"<h2>Signed in to Sarah \xe2\x9c\x93</h2>"
                  b"<p>You can close this tab and return to your terminal.</p></body>")
 
     class Handler(http.server.BaseHTTPRequestHandler):
@@ -1004,19 +1005,17 @@ def cloud_login_browser(provider="google"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
-            if "code" in qs:
-                box["code"] = qs["code"][0]
-                self.wfile.write(done_html)
-            elif "access_token" in qs:  # implicit fallback
+            if "access_token" in qs:
                 box["access_token"] = qs["access_token"][0]
                 box["refresh_token"] = qs.get("refresh_token", [None])[0]
+                box["expires_in"] = qs.get("expires_in", ["3600"])[0]
                 self.wfile.write(done_html)
             elif "error" in qs or "error_description" in qs:
                 box["error"] = qs.get("error_description", qs.get("error", ["sign-in failed"]))[0]
                 self.wfile.write(b"<!doctype html><body>Sign-in failed; you can close this tab.</body>")
             else:
-                # tokens may arrive in the URL fragment (#...) which servers can't see;
-                # this page rewrites them into the query string so we capture them.
+                # the page forwards tokens in the URL fragment (#...), which servers
+                # can't see; this rewrites them into the query string so we capture them.
                 self.wfile.write(b"<!doctype html><body><script>"
                                  b"if(location.hash.length>1){location.replace(location.pathname+'?'+location.hash.slice(1));}"
                                  b"else{document.write('Waiting\\u2026');}</script></body>")
@@ -1026,36 +1025,34 @@ def cloud_login_browser(provider="google"):
 
     srv = http.server.HTTPServer(("127.0.0.1", port), Handler)
     srv.timeout = 1
-    url = (f"{SUPABASE_URL}/auth/v1/authorize?provider={provider}"
-           f"&redirect_to={urllib.parse.quote(redirect, safe='')}"
-           f"&code_challenge={challenge}&code_challenge_method=s256")
-    print(f"{DIM}Opening your browser to sign in with {provider}…{RESET}")
+    url = f"{SITE_URL}/cli.html?port={port}"
+    print(f"{DIM}Opening your browser to sign in (Google or email)…{RESET}")
     print(f"{DIM}If it doesn't open, paste this URL into a browser:{RESET}\n{url}\n")
     try:
         webbrowser.open(url)
     except Exception:
         pass
-    deadline = time.time() + 120
+    deadline = time.time() + 180
     try:
-        while time.time() < deadline and not (box.get("code") or box.get("access_token") or box.get("error")):
+        while time.time() < deadline and not (box.get("access_token") or box.get("error")):
             srv.handle_request()
     finally:
         srv.server_close()
 
     if box.get("error"):
         return False, box["error"]
-    if box.get("access_token"):
-        _store_session({"access_token": box["access_token"], "refresh_token": box.get("refresh_token"),
-                        "expires_in": 3600, "user": {}}, None)
-        return True, None
-    if not box.get("code"):
+    if not box.get("access_token"):
         return False, "timed out waiting for sign-in (no response received)"
-    status, data = _api("POST", "/auth/v1/token?grant_type=pkce",
-                        body={"auth_code": box["code"], "code_verifier": verifier})
-    if status == 200 and data and data.get("access_token"):
-        _store_session(data, (data.get("user") or {}).get("email"))
-        return True, None
-    return False, (data or {}).get("message") or (data or {}).get("error_description") or "code exchange failed"
+    try:
+        expires_in = int(box.get("expires_in") or 3600)
+    except ValueError:
+        expires_in = 3600
+    creds = {"access_token": box["access_token"], "refresh_token": box.get("refresh_token"),
+             "expires_at": time.time() + expires_in}
+    st, user = _api("GET", "/auth/v1/user", token=box["access_token"])
+    creds["email"] = (user or {}).get("email") if st == 200 else None
+    save_creds(creds)
+    return True, None
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -1548,16 +1545,16 @@ def cloud_menu():
             print(f"  {AMBER}[O]{RESET} sign out")
         else:
             print(f"{DIM}not signed in — results save locally only.{RESET}\n")
-            print(f"  {AMBER}[G]{RESET} sign in with Google {DIM}(opens your browser){RESET}")
-            print(f"  {AMBER}[I]{RESET} sign in with email & password")
+            print(f"  {AMBER}[S]{RESET} sign in {DIM}(opens a browser page — Google or email){RESET}")
+            print(f"  {AMBER}[I]{RESET} sign in with email & password in the terminal")
         print(f"  {AMBER}[B]{RESET} back")
         print(f"\n{DIM}choose...{RESET}")
         ch = getch().lower()
         if ch == "b":
             return
         if not token:
-            if ch == "g":
-                ok, err = cloud_login_browser("google")
+            if ch == "s":
+                ok, err = cloud_login_browser()
                 print(f"{GREEN}signed in as {cloud_email() or 'your account'}{RESET}" if ok
                       else f"{AMBER}sign-in failed: {err}{RESET}")
             elif ch == "i":
