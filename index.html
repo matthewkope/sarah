@@ -555,9 +555,16 @@ const sb = (window.supabase && window.supabase.createClient)
 let authUser = null;
 
 const STORE_KEY = "sarah_attachment_profiles";
+const CLOUD_CACHE_KEY = "sarah_cloud_cache";
 const PROFILES_VERSION = 1;
 function readLocal(){ try{ const d=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); return Array.isArray(d.profiles)?d.profiles:[]; }catch(e){ return []; } }
 function writeLocal(p){ localStorage.setItem(STORE_KEY, JSON.stringify({version:PROFILES_VERSION, profiles:p})); }
+
+// Last-known cloud snapshot, so signed-in loads render instantly (then refresh
+// in the background) instead of blocking on a network round-trip every time.
+function readCloudCache(uid){ try{ const d=JSON.parse(localStorage.getItem(CLOUD_CACHE_KEY)||"{}"); return d.uid===uid && Array.isArray(d.profiles) ? d.profiles : null; }catch(e){ return null; } }
+function writeCloudCache(uid, p){ try{ localStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify({uid, profiles:p})); }catch(e){} }
+function clearCloudCache(){ localStorage.removeItem(CLOUD_CACHE_KEY); }
 
 // In-memory source of truth: mirrors localStorage (signed out) or the cloud (signed in).
 let profilesCache = readLocal();
@@ -567,7 +574,7 @@ function loadProfiles(){ return profilesCache || []; }
 function writeProfiles(p){
   const old = profilesCache || [];
   profilesCache = p;
-  if(authUser && sb){ syncRemote(old, p); } else { writeLocal(p); }
+  if(authUser && sb){ writeCloudCache(authUser.id, p); syncRemote(old, p); } else { writeLocal(p); }
 }
 
 // Push the diff between old and new to Supabase (upsert current, delete removed).
@@ -621,13 +628,17 @@ async function applySession(session){
   appliedUserId = uid;
   if(authUser){
     const localBefore = readLocal();   // what's saved on this device before we load the cloud
-    await pullRemote();
+    profilesCache = readCloudCache(authUser.id) || [];   // instant: render the last-known snapshot
     refreshAccountUI();
     rerenderCurrent();
-    maybeOfferMigration(localBefore);  // offer to add this device's profiles to the account
+    pullRemote().then(() => {           // refresh from the network in the background (non-blocking)
+      refreshAccountUI();
+      rerenderCurrent();
+      maybeOfferMigration(localBefore);
+    });
     return;
   }
-  if(was){ profilesCache = readLocal(); }   // just signed out → back to local
+  if(was){ profilesCache = readLocal(); clearCloudCache(); }   // signed out → local; drop cloud snapshot
   refreshAccountUI();
   rerenderCurrent();
 }
@@ -662,7 +673,8 @@ async function pullRemote(){
     const { data, error } = await sb.from("results").select("payload").order("updated_at",{ascending:true});
     if(error) throw error;
     profilesCache = (data||[]).map(r=>r.payload).filter(Boolean);
-  }catch(err){ console.error("cloud load failed", err); profilesCache=[]; toast("Couldn't load your cloud profiles."); }
+    if(authUser) writeCloudCache(authUser.id, profilesCache);
+  }catch(err){ console.error("cloud load failed", err); toast("Couldn't refresh cloud profiles — showing the last synced copy."); }
 }
 function rerenderCurrent(){
   if(currentScreen==="screen-home") showHome();
